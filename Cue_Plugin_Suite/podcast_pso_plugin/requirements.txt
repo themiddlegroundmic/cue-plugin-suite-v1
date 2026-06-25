@@ -1,0 +1,15 @@
+# Cue PSO Plugin — Python dependencies
+# Install with: pip install -r requirements.txt
+
+# Core HTTP and parsing
+requests>=2.31.0
+
+# Word document generation
+python-docx>=1.1.0
+
+# Google Trends demand signal
+pytrends>=4.9.2
+
+# Testing
+pytest>=7.4.0
+pytest-mock>=3.12.0

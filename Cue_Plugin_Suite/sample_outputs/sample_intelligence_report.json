@@ -1,0 +1,143 @@
+{
+  "input": {
+    "rssUrl": "https://example.com/local-business-feed.xml",
+    "showUrl": null,
+    "episodeUrl": null,
+    "youtubeChannelUrl": null,
+    "facebookUrl": null,
+    "instagramUrl": null,
+    "tiktokUrl": null,
+    "manualTopic": "AI automation for local businesses",
+    "targetPlatform": "podcast",
+    "alternateKeywords": []
+  },
+  "showMetadata": {
+    "title": "Local Operators Weekly",
+    "description": "A practical podcast for local business owners using automation carefully.",
+    "author": "Cue Sample",
+    "feedUrl": "https://example.com/local-business-feed.xml",
+    "link": "https://example.com",
+    "categories": ["Business", "Entrepreneurship"],
+    "image": "https://example.com/show.jpg",
+    "language": "en-us",
+    "episodes": []
+  },
+  "episodeMetadata": [],
+  "pluginResultsSummary": [
+    {
+      "pluginId": "rss",
+      "platform": "podcast",
+      "status": "ok",
+      "signalCount": 1,
+      "competitorCount": 0,
+      "warnings": []
+    },
+    {
+      "pluginId": "apple",
+      "platform": "podcast",
+      "status": "ok",
+      "signalCount": 1,
+      "competitorCount": 3,
+      "warnings": ["Apple Podcasts results are competition/search visibility signals, not real Apple search volume."]
+    },
+    {
+      "pluginId": "youtubeData",
+      "platform": "youtube",
+      "status": "ok",
+      "signalCount": 3,
+      "competitorCount": 3,
+      "warnings": ["YouTube Data API does not provide true keyword search volume; Cue treats it as demand, competition, freshness, and engagement proxy data."]
+    }
+  ],
+  "intelligenceReport": {
+    "primaryTopic": "AI automation for local businesses",
+    "keywords": [
+      {"value": "AI automation for local businesses", "source": "input", "weight": 1.0, "presentInUserContent": true},
+      {"value": "local business automation", "source": "rss", "weight": 0.4, "presentInUserContent": true}
+    ],
+    "competitors": [
+      {
+        "showTitle": "Small Business Systems",
+        "description": "Automation workflows for service businesses.",
+        "feedUrl": "https://example.com/competitor.xml",
+        "episodeCount": 42,
+        "recentEpisodeTitles": ["Using AI Agents for Admin Work"],
+        "publishingFrequency": null,
+        "averageDescriptionLength": 5,
+        "keywordOverlap": ["automation", "business"],
+        "source": "apple",
+        "externalUrl": "https://podcasts.apple.com/example"
+      }
+    ],
+    "demandSignals": [
+      {
+        "type": "search_interest",
+        "source": "youtubeData",
+        "value": {
+          "keyword": "AI automation for local businesses",
+          "averageInterest": 76,
+          "engagementScore": 76,
+          "videoCountForQuery": 128000,
+          "note": "YouTube is an engagement and demand proxy, not true keyword search volume."
+        },
+        "confidence": 0.72,
+        "notes": ""
+      }
+    ],
+    "competitionSignals": [
+      {
+        "type": "competition",
+        "source": "apple",
+        "value": {
+          "resultCount": 25,
+          "rankPosition": null,
+          "note": "Competition/search visibility signal only. This is not Apple search volume."
+        },
+        "confidence": 0.75,
+        "notes": ""
+      }
+    ],
+    "contentGaps": [
+      {
+        "gap_topic": "AI automation for local businesses",
+        "reason": "Related search interest exists, but few competing podcast results mention this angle.",
+        "supporting_signals": ["Google Trends related query", "low competitor keyword overlap", "YouTube result metadata"],
+        "suggested_angle": "How AI agents could help small local businesses automate admin work without losing customer trust.",
+        "confidence": 74
+      }
+    ],
+    "riskFlags": [],
+    "opportunityScore": 78,
+    "platformReadinessScore": 73,
+    "confidenceScore": 69
+  },
+  "scoreBreakdown": {
+    "opportunityScore": 78,
+    "platformReadinessScore": 73,
+    "confidenceScore": 69,
+    "opportunity": {
+      "score": 78,
+      "label": "medium",
+      "factors": ["Demand Signal: 76/100", "Trend Momentum: 75/100", "Competition Gap: 50/100"],
+      "explanation": "Opportunity Score is medium based on rss, apple, youtubeData.",
+      "warnings": []
+    }
+  },
+  "writerOutput": {
+    "generatedText": {
+      "episodeTitle": "AI Automation For Local Businesses",
+      "descriptionOpening150Words": "This episode examines AI automation for local businesses through the lens of local business automation.",
+      "tags": ["AI automation for local businesses", "local business automation"]
+    },
+    "whyThisWorks": ["Uses the primary topic from the intelligence report."],
+    "keywordsUsed": ["AI automation for local businesses", "local business automation"],
+    "riskNotes": ["No major v1 risk flags detected."],
+    "scoreImpactEstimate": {
+      "opportunityScore": 83,
+      "platformReadinessScore": 85,
+      "confidenceScore": 69
+    }
+  },
+  "createdAt": "2026-06-25T12:00:00Z",
+  "version": "1.0.0"
+}
