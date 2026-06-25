@@ -13,6 +13,7 @@ from .models import (
     CueWriterRequest,
     Platform,
 )
+from src.core.retention import CueRetentionPolicy
 
 __all__ = [
     "CueExportResult",
@@ -28,4 +29,5 @@ __all__ = [
     "CueWriterOutput",
     "CueWriterRequest",
     "Platform",
+    "CueRetentionPolicy",
 ]

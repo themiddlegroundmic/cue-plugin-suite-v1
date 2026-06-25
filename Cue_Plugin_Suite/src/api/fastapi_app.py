@@ -64,6 +64,14 @@ def create_app(router: CueApiRouter | None = None):
     def plugins_status(context: CueRequestContext = Depends(context_from_headers)):
         return cue_router.plugin_status(context=context)
 
+    @app.post("/retention/preview")
+    def retention_preview(request: Dict[str, Any], context: CueRequestContext = Depends(context_from_headers)):
+        return cue_router.preview_retention_cleanup(request, context=context)
+
+    @app.post("/retention/run")
+    def retention_run(request: Dict[str, Any], context: CueRequestContext = Depends(context_from_headers)):
+        return cue_router.run_retention_cleanup(request, context=context)
+
     return app
 
 if FastAPI is not None:
@@ -100,5 +108,13 @@ if FastAPI is not None:
     @app.get("/plugins/status")
     def plugins_status(context: CueRequestContext = Depends(context_from_headers)):
         return app.state.cue_router.plugin_status(context=context)
+
+    @app.post("/retention/preview")
+    def retention_preview(request: Dict[str, Any], context: CueRequestContext = Depends(context_from_headers)):
+        return app.state.cue_router.preview_retention_cleanup(request, context=context)
+
+    @app.post("/retention/run")
+    def retention_run(request: Dict[str, Any], context: CueRequestContext = Depends(context_from_headers)):
+        return app.state.cue_router.run_retention_cleanup(request, context=context)
 else:
     app = None

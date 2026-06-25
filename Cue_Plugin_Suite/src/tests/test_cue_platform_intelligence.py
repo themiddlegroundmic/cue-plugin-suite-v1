@@ -6,6 +6,7 @@ from pathlib import Path
 from src.core.intelligence.content_gaps import ContentGapDetector
 from src.core.intelligence.engine import CueIntelligenceEngine
 from src.core.auth import local_context
+from src.core.retention import CueRetentionPolicy
 from src.core.scoring.scorer import CueScorer
 from src.core.storage import CueDatabase, CueTrackingRepository
 from src.core.types.models import CueInput, CueKeyword, CuePluginResult, CueRequestContext, CueShow, CueEpisode, CueSignal, CueWriterRequest
@@ -13,6 +14,7 @@ from src.core.types.plugin import CuePlugin
 from src.core.writer.writer import CueIntelligenceWriter
 from src.services.comparison import AnalysisComparisonService
 from src.services.dashboard import CueDashboardReportBuilder
+from src.services.retention import CueRetentionService
 from src.plugins.apple import ApplePodcastsSearchPlugin
 from src.plugins.googleTrends import GoogleTrendsSignalPlugin
 from src.plugins.rss import RssPlugin
@@ -473,3 +475,150 @@ def test_fastapi_context_headers_helper():
     assert context.user_id == "user-y"
     assert context.workspace_id == "workspace-z"
     assert context.debug is True
+
+
+def test_default_retention_policy():
+    policy = CueRetentionPolicy()
+    assert policy.tenant_id == "local"
+    assert policy.keep_analysis_runs_days == 90
+    assert policy.keep_exports_days == 30
+    assert policy.dry_run is True
+    assert policy.max_delete_count is None
+
+
+def test_retention_preview_does_not_delete(tmp_path):
+    repository = CueTrackingRepository(CueDatabase(tmp_path / "cue.sqlite3"))
+    context = CueRequestContext(tenant_id="tenant-a", user_id="u1")
+    export_dir = tmp_path / "exports"
+    export_dir.mkdir()
+    export_file = export_dir / "old.json"
+    export_file.write_text("{}", encoding="utf-8")
+    run_id = _save_old_run(repository, context, export_file, days_old=120)
+    summary = CueRetentionService(repository, export_dir).preview_retention_cleanup(CueRetentionPolicy(dry_run=True), context)
+    assert summary["candidate_counts"]["analysis_runs"] == 1
+    assert summary["deleted_counts"]["analysis_runs"] == 0
+    assert export_file.exists()
+    assert repository.get_analysis_run(run_id, context=context) is not None
+
+
+def test_retention_run_deletes_only_matching_tenant_records(tmp_path):
+    repository = CueTrackingRepository(CueDatabase(tmp_path / "cue.sqlite3"))
+    export_dir = tmp_path / "exports"
+    export_dir.mkdir()
+    tenant_a = CueRequestContext(tenant_id="tenant-a", user_id="u1")
+    tenant_b = CueRequestContext(tenant_id="tenant-b", user_id="u2")
+    file_a = export_dir / "a.json"
+    file_b = export_dir / "b.json"
+    file_a.write_text("{}", encoding="utf-8")
+    file_b.write_text("{}", encoding="utf-8")
+    run_a = _save_old_run(repository, tenant_a, file_a, days_old=120)
+    run_b = _save_old_run(repository, tenant_b, file_b, days_old=120)
+    summary = CueRetentionService(repository, export_dir).run_retention_cleanup(CueRetentionPolicy(dry_run=False), tenant_a)
+    assert summary["deleted_counts"]["analysis_runs"] == 1
+    assert repository.get_analysis_run(run_a, context=tenant_a) is None
+    assert repository.get_analysis_run(run_b, context=tenant_b) is not None
+    assert not file_a.exists()
+    assert file_b.exists()
+
+
+def test_retention_export_path_traversal_blocked(tmp_path):
+    repository = CueTrackingRepository(CueDatabase(tmp_path / "cue.sqlite3"))
+    context = CueRequestContext(tenant_id="tenant-a", user_id="u1")
+    export_dir = tmp_path / "exports"
+    export_dir.mkdir()
+    unsafe_path = tmp_path / "outside.json"
+    unsafe_path.write_text("{}", encoding="utf-8")
+    _save_old_run(repository, context, unsafe_path, days_old=120)
+    summary = CueRetentionService(repository, export_dir).run_retention_cleanup(CueRetentionPolicy(dry_run=False), context)
+    assert summary["warnings"]
+    assert unsafe_path.exists()
+
+
+def test_retention_missing_export_file_reported(tmp_path):
+    repository = CueTrackingRepository(CueDatabase(tmp_path / "cue.sqlite3"))
+    context = CueRequestContext(tenant_id="tenant-a", user_id="u1")
+    export_dir = tmp_path / "exports"
+    export_dir.mkdir()
+    missing = export_dir / "missing.json"
+    _save_old_run(repository, context, missing, days_old=120)
+    summary = CueRetentionService(repository, export_dir).run_retention_cleanup(CueRetentionPolicy(dry_run=False), context)
+    assert str(missing) in summary["export_files_missing"]
+
+
+def test_retention_max_delete_count_respected(tmp_path):
+    repository = CueTrackingRepository(CueDatabase(tmp_path / "cue.sqlite3"))
+    context = CueRequestContext(tenant_id="tenant-a", user_id="u1")
+    show_id = repository.upsert_tracked_show("Show", "https://example.com/rss", context=context)
+    repository.save_score_history(show_id, "podcast", "one", 1, context=context)
+    repository.save_score_history(show_id, "podcast", "two", 2, context=context)
+    _backdate_table(repository, "score_history", context.tenant_id, days_old=365)
+    policy = CueRetentionPolicy(dry_run=False, max_delete_count=1)
+    summary = CueRetentionService(repository, tmp_path / "exports").run_retention_cleanup(policy, context)
+    assert summary["deleted_counts"]["score_history"] == 1
+    assert repository.list_score_history(context=context)["total"] == 1
+
+
+def test_cli_retention_preview_command(tmp_path, capsys):
+    from src import cli
+
+    repository = CueTrackingRepository(CueDatabase(tmp_path / "cue.sqlite3"))
+    context = local_context()
+    export_dir = tmp_path / "exports"
+    export_dir.mkdir()
+    _save_old_run(repository, context, export_dir / "old.json", days_old=120)
+    exit_code = cli.main(["retention", "preview", "--tenant-id", "local", "--db", str(tmp_path / "cue.sqlite3"), "--export-dir", str(export_dir)])
+    assert exit_code == 0
+    assert "Cue Retention Cleanup Summary" in capsys.readouterr().out
+
+
+def test_cli_retention_run_requires_yes(tmp_path):
+    from src import cli
+
+    try:
+        cli.main(["retention", "run", "--tenant-id", "local", "--db", str(tmp_path / "cue.sqlite3")])
+    except SystemExit as exc:
+        assert "--yes" in str(exc)
+    else:
+        raise AssertionError("retention run without --yes should exit")
+
+
+def test_router_retention_preview_and_run(tmp_path):
+    from src.api.router import CueApiRouter
+
+    repository = CueTrackingRepository(CueDatabase(tmp_path / "cue.sqlite3"))
+    context = CueRequestContext(tenant_id="tenant-a", user_id="u1")
+    export_dir = tmp_path / "exports"
+    export_dir.mkdir()
+    _save_old_run(repository, context, export_dir / "old.json", days_old=120)
+    router = CueApiRouter(repository=repository, export_dir=str(export_dir))
+    preview = router.preview_retention_cleanup({}, context=context)
+    assert preview["dry_run"] is True
+    run = router.run_retention_cleanup({"dry_run": False}, context=context)
+    assert run["deleted_counts"]["analysis_runs"] == 1
+
+
+def test_fastapi_retention_routes_registered_if_available():
+    from src.api import fastapi_app
+
+    if fastapi_app.FastAPI is not None:
+        routes = {route.path for route in fastapi_app.app.routes}
+        assert "/retention/preview" in routes
+        assert "/retention/run" in routes
+
+
+def _save_old_run(repository, context, export_path, days_old=120):
+    report = _report_with_score(topic="old topic")
+    writer_output = CueIntelligenceWriter().write(CueWriterRequest(intelligenceReport=report))
+    run_id = repository.save_analysis_run(report, writer_output, str(export_path), context=context)
+    _backdate_table(repository, "analysis_runs", context.tenant_id, days_old=days_old)
+    _backdate_table(repository, "score_history", context.tenant_id, days_old=days_old)
+    _backdate_table(repository, "weekly_rank_snapshots", context.tenant_id, days_old=days_old)
+    _backdate_table(repository, "competitor_snapshots", context.tenant_id, days_old=days_old)
+    return run_id
+
+
+def _backdate_table(repository, table, tenant_id, days_old=365):
+    old = (datetime.utcnow() - timedelta(days=days_old)).isoformat()
+    with repository.database.connect() as connection:
+        connection.execute(f"UPDATE {table} SET created_at = ?, updated_at = ? WHERE tenant_id = ?", (old, old, tenant_id))
+        connection.commit()

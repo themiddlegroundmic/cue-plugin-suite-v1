@@ -35,6 +35,7 @@ score_json = router.score({
 runs = router.list_analysis_runs(context=context, limit=20, offset=0)
 history = router.get_score_history(topic="Michigan redistricting", context=context)
 plugin_status = router.plugin_status(context=context)
+retention_preview = router.preview_retention_cleanup({}, context=context)
 ```
 
 The host app authenticates users. This package only scopes storage and exports based on the trusted context the host app passes in.
@@ -167,6 +168,25 @@ repository.save_analysis_run(report, writer_output, "exports/report.json")
 ## Export Security
 
 `get_export(run_id, context)` verifies that the analysis run belongs to the tenant and that the stored export path is inside the configured exports directory. It does not accept arbitrary file paths from the frontend.
+
+## Retention Cleanup
+
+Use preview before run:
+
+```python
+preview = router.preview_retention_cleanup({
+    "analysis_days": 90,
+    "exports_days": 30
+}, context=context)
+
+result = router.run_retention_cleanup({
+    "analysis_days": 90,
+    "exports_days": 30,
+    "dry_run": False
+}, context=context)
+```
+
+The request may override retention windows, but tenant scope comes from `CueRequestContext`, not from user payload fields.
 
 ## Frontend Rendering Guidance
 

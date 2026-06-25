@@ -18,6 +18,8 @@ Rules:
 - Exports are read only through the stored analysis run record.
 - Export paths are restricted to the configured exports directory.
 - Path traversal and arbitrary file reads are blocked.
+- Retention cleanup is tenant-scoped and cannot clean another tenant by request payload.
+- Retention export deletion is restricted to the configured exports directory.
 
 FastAPI header context:
 
@@ -36,4 +38,3 @@ Signal language:
 - Google Trends is relative interest.
 - YouTube is a demand and engagement proxy, not true keyword volume.
 - Scores are creator decision-support estimates, not guarantees.
-

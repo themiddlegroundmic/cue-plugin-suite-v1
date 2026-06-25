@@ -22,6 +22,8 @@ Routes:
 - `GET /runs/{run_id}/export`
 - `GET /history/{tracked_id}`
 - `GET /plugins/status`
+- `POST /retention/preview`
+- `POST /retention/run`
 
 Context headers:
 
@@ -35,5 +37,7 @@ X-Cue-Debug: false
 The adapter does not implement login or auth. The host app must authenticate the request and pass trusted headers.
 
 The adapter returns JSON-serializable dashboard response dictionaries. It does not change the plugin contract and does not make FastAPI required for CLI or tests.
+
+Retention routes use the same context headers. The host app should require an appropriate authenticated admin/operator action before calling `/retention/run`.
 
 Source limits remain unchanged: Apple and Spotify are search visibility / competition signals, Google Trends is relative interest, YouTube is a demand and engagement proxy, and scores are estimates for creator decision support.

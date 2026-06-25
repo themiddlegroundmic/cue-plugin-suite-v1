@@ -8,10 +8,12 @@ from typing import List
 
 from src.core.auth import local_context
 from src.core.exports.json_exporter import JsonCueExporter
+from src.core.retention import CueRetentionPolicy
 from src.core.storage import CueDatabase, CueTrackingRepository
 from src.core.types.models import CueInput, CueWriterRequest
 from src.core.writer import CueIntelligenceWriter
 from src.services.orchestrator import CueAnalysisService
+from src.services.retention import CueRetentionService
 from src.services.snapshots import run_weekly_snapshots
 
 
@@ -34,6 +36,21 @@ def main(argv: List[str] | None = None) -> int:
     snapshot_list = snapshot_subparsers.add_parser("list", help="List tracked shows for snapshot runs")
     snapshot_list.add_argument("--db", default="cue_tracking.sqlite3")
     snapshot_list.add_argument("--limit", type=int, default=100)
+    retention_parser = subparsers.add_parser("retention", help="Preview or run tenant-scoped retention cleanup")
+    retention_subparsers = retention_parser.add_subparsers(dest="retention_command", required=True)
+    for command_name in ("preview", "run"):
+        command = retention_subparsers.add_parser(command_name, help=f"{command_name.title()} retention cleanup")
+        command.add_argument("--tenant-id", default="local")
+        command.add_argument("--analysis-days", type=int, default=90)
+        command.add_argument("--exports-days", type=int, default=30)
+        command.add_argument("--score-history-days", type=int, default=180)
+        command.add_argument("--snapshots-days", type=int, default=180)
+        command.add_argument("--competitor-days", type=int, default=180)
+        command.add_argument("--max-delete-count", type=int)
+        command.add_argument("--dry-run", action="store_true")
+        command.add_argument("--yes", action="store_true")
+        command.add_argument("--db", default="cue_tracking.sqlite3")
+        command.add_argument("--export-dir", default="exports")
     args = parser.parse_args(argv)
 
     if args.command == "analyze":
@@ -49,7 +66,31 @@ def main(argv: List[str] | None = None) -> int:
             for show in repository.list_tracked_shows(limit=args.limit, context=local_context())["items"]:
                 print(f"{show['id']} | {show['platform']} | {show['title']} | {show.get('rss_url') or ''}")
             return 0
+    if args.command == "retention":
+        return run_retention(args)
     return 1
+
+
+def run_retention(args) -> int:
+    context = local_context()
+    context.tenant_id = args.tenant_id
+    repository = CueTrackingRepository(CueDatabase(args.db))
+    policy = CueRetentionPolicy(
+        tenant_id=context.tenant_id,
+        keep_analysis_runs_days=args.analysis_days,
+        keep_exports_days=args.exports_days,
+        keep_score_history_days=args.score_history_days,
+        keep_snapshots_days=args.snapshots_days,
+        keep_competitor_snapshots_days=args.competitor_days,
+        dry_run=True if args.retention_command == "preview" else args.dry_run,
+        max_delete_count=args.max_delete_count,
+    )
+    if args.retention_command == "run" and not policy.dry_run and not args.yes:
+        raise SystemExit("Retention run requires --yes unless --dry-run is set.")
+    service = CueRetentionService(repository, export_dir=args.export_dir)
+    summary = service.preview_retention_cleanup(policy, context) if args.retention_command == "preview" else service.run_retention_cleanup(policy, context)
+    print(_retention_summary(summary))
+    return 0
 
 
 def run_analyze(args) -> int:
@@ -104,6 +145,21 @@ def _gap_line(gap) -> str:
     if isinstance(gap, dict):
         return f"{gap.get('gap_topic')}: {gap.get('reason')}"
     return str(gap)
+
+
+def _retention_summary(summary) -> str:
+    return "\n".join([
+        "Cue Retention Cleanup Summary",
+        f"Tenant: {summary['tenant_id']}",
+        f"Dry run: {summary['dry_run']}",
+        f"Candidate counts: {summary['candidate_counts']}",
+        f"Deleted counts: {summary['deleted_counts']}",
+        f"Skipped counts: {summary['skipped_counts']}",
+        f"Export files deleted: {len(summary['export_files_deleted'])}",
+        f"Export files missing: {len(summary['export_files_missing'])}",
+        f"Warnings: {len(summary['warnings'])}",
+        f"Errors: {len(summary['errors'])}",
+    ])
 
 
 if __name__ == "__main__":

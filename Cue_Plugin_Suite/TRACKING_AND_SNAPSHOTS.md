@@ -33,3 +33,5 @@ python -m src.cli snapshots list
 The snapshot runner is callable, not a daemon. It loads tracked shows, reruns analysis, saves score history, competitor snapshots, weekly rank snapshots, analysis runs, and JSON exports.
 
 This prepares Cue for weekly tracking without creating fragile background scheduling in v1.
+
+Old generated history can be cleaned with the tenant-scoped retention service. See `RETENTION.md`.

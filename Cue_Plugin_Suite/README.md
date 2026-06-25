@@ -213,6 +213,7 @@ The new shared package also exposes API-style handlers:
 These are plain Python handler functions for host-app integration; no production web server is introduced in this pass.
 
 See `HOST_APP_INTEGRATION.md`, `DASHBOARD_RESPONSE.md`, `API_ADAPTER.md`, `TRACKING_AND_SNAPSHOTS.md`, and `SECURITY_AND_TENANCY.md` for host-app usage details.
+See `RETENTION.md` for tenant-scoped cleanup of old runs, exports, score history, and snapshots.
 
 ---
 

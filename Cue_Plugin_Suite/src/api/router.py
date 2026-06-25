@@ -8,6 +8,7 @@ from src.api import handlers
 from src.api.responses import error_response
 from src.core.auth import CueAuthorizationError, ensure_context
 from src.core.exports import JsonCueExporter
+from src.core.retention import CueRetentionPolicy
 from src.core.storage import CueDatabase, CueTrackingRepository
 from src.core.types.models import CueInput, CueIntelligenceReport, CueRequestContext, CueWriterRequest
 from src.core.writer import CueIntelligenceWriter
@@ -15,6 +16,7 @@ from src.services.comparison import AnalysisComparisonService
 from src.services.dashboard import CueDashboardReportBuilder
 from src.services.orchestrator import CueAnalysisService
 from src.services.plugin_status import CuePluginStatusService
+from src.services.retention import CueRetentionService
 
 
 class CueApiRouter:
@@ -151,6 +153,16 @@ class CueApiRouter:
             return error_response("not_found", "Both analysis runs must exist in this tenant.", recoverable=True, context=context)
         return AnalysisComparisonService().compare(before, after)
 
+    def preview_retention_cleanup(self, request: Dict[str, Any], context: CueRequestContext | None = None) -> Dict[str, Any]:
+        context = ensure_context(context)
+        policy = self._retention_policy_from_request(request, context, dry_run=True)
+        return CueRetentionService(self.repository, self.export_dir).preview_retention_cleanup(policy, context)
+
+    def run_retention_cleanup(self, request: Dict[str, Any], context: CueRequestContext | None = None) -> Dict[str, Any]:
+        context = ensure_context(context)
+        policy = self._retention_policy_from_request(request, context, dry_run=bool(request.get("dry_run", False)))
+        return CueRetentionService(self.repository, self.export_dir).run_retention_cleanup(policy, context)
+
     def _run_and_store(self, cue_input: CueInput, context: CueRequestContext) -> Dict[str, Any]:
         report = self.analysis_service.analyze(cue_input)
         writer_output = CueIntelligenceWriter().write(CueWriterRequest(intelligenceReport=report, targetPlatform=cue_input.targetPlatform))
@@ -173,3 +185,14 @@ class CueApiRouter:
         safe = "".join(ch.lower() if ch.isalnum() else "-" for ch in topic).strip("-") or "cue-analysis"
         return f"{safe[:60]}.json"
 
+    def _retention_policy_from_request(self, request: Dict[str, Any], context: CueRequestContext, dry_run: bool) -> CueRetentionPolicy:
+        return CueRetentionPolicy(
+            tenant_id=context.tenant_id,
+            keep_analysis_runs_days=int(request.get("keep_analysis_runs_days", request.get("analysis_days", 90))),
+            keep_exports_days=int(request.get("keep_exports_days", request.get("exports_days", 30))),
+            keep_score_history_days=int(request.get("keep_score_history_days", request.get("score_history_days", 180))),
+            keep_snapshots_days=int(request.get("keep_snapshots_days", request.get("snapshots_days", 180))),
+            keep_competitor_snapshots_days=int(request.get("keep_competitor_snapshots_days", request.get("competitor_days", 180))),
+            dry_run=dry_run,
+            max_delete_count=int(request["max_delete_count"]) if request.get("max_delete_count") is not None else None,
+        )

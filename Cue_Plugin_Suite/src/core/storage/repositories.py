@@ -312,6 +312,37 @@ class CueTrackingRepository:
             items = [dict(row) for row in rows]
             return {"items": items, "limit": limit, "offset": offset, "total": total, "has_more": offset + len(items) < total}
 
+    def list_analysis_runs_before(self, cutoff_iso: str, context: CueRequestContext | None = None, limit: Optional[int] = None) -> list[Dict[str, Any]]:
+        context = ensure_context(context)
+        sql = "SELECT * FROM analysis_runs WHERE tenant_id = ? AND created_at < ? ORDER BY created_at ASC"
+        params: list[Any] = [context.tenant_id, cutoff_iso]
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        with self.database.connect() as connection:
+            return [dict(row) for row in connection.execute(sql, params).fetchall()]
+
+    def list_score_history_before(self, cutoff_iso: str, context: CueRequestContext | None = None, limit: Optional[int] = None) -> list[Dict[str, Any]]:
+        return self._list_table_before("score_history", cutoff_iso, context, limit)
+
+    def list_weekly_rank_snapshots_before(self, cutoff_iso: str, context: CueRequestContext | None = None, limit: Optional[int] = None) -> list[Dict[str, Any]]:
+        return self._list_table_before("weekly_rank_snapshots", cutoff_iso, context, limit)
+
+    def list_competitor_snapshots_before(self, cutoff_iso: str, context: CueRequestContext | None = None, limit: Optional[int] = None) -> list[Dict[str, Any]]:
+        return self._list_table_before("competitor_snapshots", cutoff_iso, context, limit)
+
+    def delete_analysis_runs(self, ids: list[str], context: CueRequestContext | None = None) -> int:
+        return self._delete_by_ids("analysis_runs", ids, context)
+
+    def delete_score_history(self, ids: list[str], context: CueRequestContext | None = None) -> int:
+        return self._delete_by_ids("score_history", ids, context)
+
+    def delete_weekly_rank_snapshots(self, ids: list[str], context: CueRequestContext | None = None) -> int:
+        return self._delete_by_ids("weekly_rank_snapshots", ids, context)
+
+    def delete_competitor_snapshots(self, ids: list[str], context: CueRequestContext | None = None) -> int:
+        return self._delete_by_ids("competitor_snapshots", ids, context)
+
     def _save_report_snapshots(self, report: CueIntelligenceReport, context: CueRequestContext) -> None:
         title = report.show.title if report.show else report.primaryTopic
         rss_url = report.show.feedUrl if report.show else report.input.rssUrl or ""
@@ -366,3 +397,30 @@ class CueTrackingRepository:
         if filters.get("min_confidence_score") is not None:
             where.append("confidence_score >= ?")
             params.append(filters["min_confidence_score"])
+
+    def _list_table_before(self, table: str, cutoff_iso: str, context: CueRequestContext | None, limit: Optional[int]) -> list[Dict[str, Any]]:
+        context = ensure_context(context)
+        allowed = {"score_history", "weekly_rank_snapshots", "competitor_snapshots"}
+        if table not in allowed:
+            raise ValueError(f"Unsupported retention table: {table}")
+        sql = f"SELECT * FROM {table} WHERE tenant_id = ? AND created_at < ? ORDER BY created_at ASC"
+        params: list[Any] = [context.tenant_id, cutoff_iso]
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        with self.database.connect() as connection:
+            return [dict(row) for row in connection.execute(sql, params).fetchall()]
+
+    def _delete_by_ids(self, table: str, ids: list[str], context: CueRequestContext | None) -> int:
+        context = ensure_context(context)
+        allowed = {"analysis_runs", "score_history", "weekly_rank_snapshots", "competitor_snapshots"}
+        if table not in allowed or not ids:
+            return 0
+        placeholders = ",".join("?" for _ in ids)
+        with self.database.connect() as connection:
+            cursor = connection.execute(
+                f"DELETE FROM {table} WHERE tenant_id = ? AND id IN ({placeholders})",
+                [context.tenant_id, *ids],
+            )
+            connection.commit()
+            return cursor.rowcount
