@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+cue_tracking.sqlite3
+exports/
+smoke_outputs/
+
+examples/demo_cue.sqlite3
+examples/exports/

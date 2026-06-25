@@ -6,6 +6,23 @@
 
 ---
 
+## Documentation Map
+
+- [QUICKSTART.md](QUICKSTART.md) - exact setup, test, analysis, retention preview, and smoke-test commands.
+- [DEVELOPER_HANDOFF.md](DEVELOPER_HANDOFF.md) - practical developer handoff covering architecture, flows, usage, safety rules, and limitations.
+- [ARCHITECTURE.md](ARCHITECTURE.md) - core module layout and separation of concerns.
+- [HOST_APP_INTEGRATION.md](HOST_APP_INTEGRATION.md) - Python router usage, request/response examples, and host integration notes.
+- [API_ADAPTER.md](API_ADAPTER.md) - optional FastAPI wrapper and local API server notes.
+- [DASHBOARD_RESPONSE.md](DASHBOARD_RESPONSE.md) - frontend-ready dashboard response shape.
+- [TRACKING_AND_SNAPSHOTS.md](TRACKING_AND_SNAPSHOTS.md) - tracking storage and weekly snapshot runner notes.
+- [SECURITY_AND_TENANCY.md](SECURITY_AND_TENANCY.md) - tenant context, export safety, and host-app responsibilities.
+- [RETENTION.md](RETENTION.md) - tenant-scoped cleanup policy, CLI, API, and safety behavior.
+- [SCORING_MODEL.md](SCORING_MODEL.md) - Opportunity, Platform Readiness, and Confidence Score model.
+- [PLUGIN_INTERFACE.md](PLUGIN_INTERFACE.md) - shared plugin contract and implementation expectations.
+- [ENVIRONMENT.md](ENVIRONMENT.md) - platform-managed environment variables.
+
+---
+
 ## What Is In This Suite
 
 This suite now includes the first working version of the shared Cue Creator Intelligence Engine under `src/`.

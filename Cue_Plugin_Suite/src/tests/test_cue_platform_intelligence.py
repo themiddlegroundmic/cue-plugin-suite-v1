@@ -606,6 +606,29 @@ def test_fastapi_retention_routes_registered_if_available():
         assert "/retention/run" in routes
 
 
+def test_smoke_test_script_runs_with_temp_outputs(tmp_path):
+    import importlib.util
+
+    script_path = Path("scripts/smoke_test.py")
+    spec = importlib.util.spec_from_file_location("cue_smoke_test", script_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    output_dir = tmp_path / "smoke_outputs"
+    exit_code = module.main([
+        "--topic",
+        "Michigan redistricting",
+        "--output-dir",
+        str(output_dir),
+        "--db",
+        str(tmp_path / "smoke.sqlite3"),
+    ])
+
+    assert exit_code == 0
+    assert (output_dir / "smoke_report.json").exists()
+
+
 def _save_old_run(repository, context, export_path, days_old=120):
     report = _report_with_score(topic="old topic")
     writer_output = CueIntelligenceWriter().write(CueWriterRequest(intelligenceReport=report))
