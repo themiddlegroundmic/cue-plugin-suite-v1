@@ -8,3 +8,9 @@ smoke_outputs/
 
 examples/demo_cue.sqlite3
 examples/exports/
+
+# PyInstaller
+build/
+dist/
+*.spec
+
