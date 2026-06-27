@@ -214,7 +214,9 @@ def test_cli_analyze_writes_export_and_database(tmp_path, monkeypatch, capsys):
     ])
     assert exit_code == 0
     assert list((tmp_path / "exports").glob("*.json"))
-    assert "Opportunity Score" in capsys.readouterr().out
+    stdout = capsys.readouterr().out
+    assert "Opportunity Score" in stdout
+    assert not stdout.lstrip().startswith("{")
 
 
 def _report_with_score(topic="ai agents", score_offset=0, competitor="Comp", gap_topic="workflow automation"):
@@ -236,6 +238,127 @@ def _report_with_score(topic="ai agents", score_offset=0, competitor="Comp", gap
         "confidence": 70,
     }]
     return report
+
+
+def test_cli_analyze_json_outputs_parseable_json(tmp_path, monkeypatch, capsys):
+    from src import cli
+
+    class FakeService:
+        def analyze(self, cue_input):
+            print("plugin warning on stdout")
+            report = _report_with_score(topic=cue_input.manualTopic)
+            report.input = cue_input
+            return report
+
+    monkeypatch.setattr(cli, "CueAnalysisService", lambda: FakeService())
+    exit_code = cli.main([
+        "analyze",
+        "--json",
+        "--topic",
+        "ai agents",
+        "--export-dir",
+        str(tmp_path / "exports"),
+        "--db",
+        str(tmp_path / "cue.sqlite3"),
+    ])
+
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert exit_code == 0
+    assert data["ok"] is True
+    assert data["topic"] == "ai agents"
+    assert data["target_platform"] == "podcast"
+    assert data["opportunity_score"] == data["intelligenceReport"]["opportunityScore"]
+    assert data["score_explanations"]["opportunityScore"] == data["opportunity_score"]
+    assert data["content_gaps"]
+    assert data["recommendations"]["generatedText"]
+    assert data["plugin_status"]
+    assert Path(data["export_path"]).exists()
+    assert "plugin warning on stdout" in captured.err
+
+
+def test_cli_analyze_json_no_store_works(tmp_path, monkeypatch, capsys):
+    from src import cli
+
+    class FakeService:
+        def analyze(self, cue_input):
+            report = _report_with_score(topic=cue_input.manualTopic)
+            report.input = cue_input
+            return report
+
+    db_path = tmp_path / "cue.sqlite3"
+    monkeypatch.setattr(cli, "CueAnalysisService", lambda: FakeService())
+    exit_code = cli.main([
+        "analyze",
+        "--json",
+        "--no-store",
+        "--topic",
+        "ai agents",
+        "--export-dir",
+        str(tmp_path / "exports"),
+        "--db",
+        str(db_path),
+    ])
+
+    data = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert data["ok"] is True
+    assert not db_path.exists()
+    assert Path(data["export_path"]).exists()
+
+
+def test_cli_analyze_json_with_topic_works(tmp_path, monkeypatch, capsys):
+    from src import cli
+
+    class FakeService:
+        def analyze(self, cue_input):
+            report = _report_with_score(topic=cue_input.manualTopic)
+            report.input = cue_input
+            return report
+
+    monkeypatch.setattr(cli, "CueAnalysisService", lambda: FakeService())
+    exit_code = cli.main([
+        "analyze",
+        "--json",
+        "--topic",
+        "platform search optimization",
+        "--export-dir",
+        str(tmp_path / "exports"),
+        "--db",
+        str(tmp_path / "cue.sqlite3"),
+    ])
+
+    data = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert data["topic"] == "platform search optimization"
+    assert data["input"]["manualTopic"] == "platform search optimization"
+
+
+def test_cli_analyze_json_with_rss_argument_is_accepted(tmp_path, monkeypatch, capsys):
+    from src import cli
+
+    class FakeService:
+        def analyze(self, cue_input):
+            report = _report_with_score(topic=cue_input.manualTopic or "The Test Show")
+            report.input = cue_input
+            return report
+
+    monkeypatch.setattr(cli, "CueAnalysisService", lambda: FakeService())
+    exit_code = cli.main([
+        "analyze",
+        "--json",
+        "--rss",
+        "https://example.com/rss",
+        "--export-dir",
+        str(tmp_path / "exports"),
+        "--db",
+        str(tmp_path / "cue.sqlite3"),
+    ])
+
+    data = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert data["rss_url"] == "https://example.com/rss"
+    assert data["input"]["rssUrl"] == "https://example.com/rss"
 
 
 def test_dashboard_report_response_model():

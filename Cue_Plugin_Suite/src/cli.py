@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import json
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import Any, List
 
 from src.core.auth import local_context
 from src.core.exports.json_exporter import JsonCueExporter
 from src.core.retention import CueRetentionPolicy
 from src.core.storage import CueDatabase, CueTrackingRepository
-from src.core.types.models import CueInput, CueWriterRequest
+from src.core.types.models import CueInput, CueWriterRequest, to_jsonable
 from src.core.writer import CueIntelligenceWriter
 from src.services.orchestrator import CueAnalysisService
 from src.services.retention import CueRetentionService
@@ -27,6 +30,7 @@ def main(argv: List[str] | None = None) -> int:
     analyze_parser.add_argument("--export-dir", default="exports")
     analyze_parser.add_argument("--db", default="cue_tracking.sqlite3")
     analyze_parser.add_argument("--no-store", action="store_true", help="Do not save analysis run to SQLite")
+    analyze_parser.add_argument("--json", action="store_true", help="Write machine-readable JSON to stdout")
     snapshots_parser = subparsers.add_parser("snapshots", help="Run or list weekly tracking snapshots")
     snapshot_subparsers = snapshots_parser.add_subparsers(dest="snapshot_command", required=True)
     snapshot_run = snapshot_subparsers.add_parser("run", help="Run weekly snapshots once")
@@ -94,6 +98,33 @@ def run_retention(args) -> int:
 
 
 def run_analyze(args) -> int:
+    if args.json:
+        return _run_analyze_json(args)
+
+    result = _analyze_and_export(args)
+    print(_summary(result["report"], result["writer_output"], result["export_path"]))
+    return 0
+
+
+def _run_analyze_json(args) -> int:
+    try:
+        with contextlib.redirect_stdout(sys.stderr):
+            result = _analyze_and_export(args)
+    except SystemExit as exc:
+        message = str(exc) or "Analysis failed."
+        print(message, file=sys.stderr)
+        print(json.dumps(_json_error(message), sort_keys=True))
+        return _exit_code(exc)
+    except Exception as exc:
+        print(f"Analysis failed: {exc}", file=sys.stderr)
+        print(json.dumps(_json_error(str(exc)), sort_keys=True))
+        return 1
+
+    print(json.dumps(_json_payload(result), sort_keys=True))
+    return 0
+
+
+def _analyze_and_export(args) -> dict[str, Any]:
     if not args.rss_url and not args.topic:
         raise SystemExit("Provide --rss, --topic, or both.")
     cue_input = CueInput(rssUrl=args.rss_url, manualTopic=args.topic, targetPlatform=args.target_platform)
@@ -104,14 +135,62 @@ def run_analyze(args) -> int:
     export_dir.mkdir(parents=True, exist_ok=True)
     filename = _filename(report.primaryTopic)
     export_path = export_dir / filename
-    JsonCueExporter().export(report, writer_output, str(export_path))
+    export_result = JsonCueExporter().export(report, writer_output, str(export_path))
 
     if not args.no_store:
         repository = CueTrackingRepository(CueDatabase(args.db))
         repository.save_analysis_run(report, writer_output, str(export_path), context=local_context())
 
-    print(_summary(report, writer_output, export_path))
-    return 0
+    return {
+        "report": report,
+        "writer_output": writer_output,
+        "export_path": export_path,
+        "export_result": export_result,
+    }
+
+
+def _json_payload(result: dict[str, Any]) -> dict[str, Any]:
+    report = result["report"]
+    writer_output = result["writer_output"]
+    export_path = result["export_path"]
+    export_payload = dict(result["export_result"].payload)
+    plugin_status = export_payload.get("pluginResultsSummary", [])
+    payload = {
+        **export_payload,
+        "ok": True,
+        "topic": report.primaryTopic,
+        "rss_url": report.input.rssUrl,
+        "target_platform": report.input.targetPlatform,
+        "opportunity_score": report.opportunityScore,
+        "platform_readiness_score": report.platformReadinessScore,
+        "confidence_score": report.confidenceScore,
+        "score_explanations": to_jsonable(report.scoreBreakdown),
+        "content_gaps": to_jsonable(report.contentGaps),
+        "recommendations": to_jsonable(writer_output),
+        "plugin_status": plugin_status,
+        "export_path": str(export_path),
+        "export": {
+            "format": "json",
+            "path": str(export_path),
+        },
+    }
+    return to_jsonable(payload)
+
+
+def _json_error(message: str) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "error": {
+            "code": "analysis_failed",
+            "message": message,
+        },
+    }
+
+
+def _exit_code(exc: SystemExit) -> int:
+    if isinstance(exc.code, int):
+        return exc.code if exc.code != 0 else 1
+    return 1
 
 
 def _filename(topic: str) -> str:
