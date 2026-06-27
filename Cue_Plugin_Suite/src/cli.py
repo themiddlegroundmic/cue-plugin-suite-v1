@@ -15,6 +15,7 @@ from src.core.retention import CueRetentionPolicy
 from src.core.storage import CueDatabase, CueTrackingRepository
 from src.core.types.models import CueInput, CueWriterRequest, to_jsonable
 from src.core.writer import CueIntelligenceWriter
+from src.plugins.external_signals import ExternalSignalsPlugin
 from src.services.orchestrator import CueAnalysisService
 from src.services.retention import CueRetentionService
 from src.services.snapshots import run_weekly_snapshots
@@ -29,6 +30,7 @@ def main(argv: List[str] | None = None) -> int:
     analyze_parser.add_argument("--target-platform", default="podcast", choices=["podcast", "youtube", "facebook", "instagram", "tiktok"])
     analyze_parser.add_argument("--export-dir", default="exports")
     analyze_parser.add_argument("--db", default="cue_tracking.sqlite3")
+    analyze_parser.add_argument("--external-signals", dest="external_signals", help="Path to a sanitized host-provided external signals snapshot")
     analyze_parser.add_argument("--no-store", action="store_true", help="Do not save analysis run to SQLite")
     analyze_parser.add_argument("--json", action="store_true", help="Write machine-readable JSON to stdout")
     snapshots_parser = subparsers.add_parser("snapshots", help="Run or list weekly tracking snapshots")
@@ -128,7 +130,9 @@ def _analyze_and_export(args) -> dict[str, Any]:
     if not args.rss_url and not args.topic:
         raise SystemExit("Provide --rss, --topic, or both.")
     cue_input = CueInput(rssUrl=args.rss_url, manualTopic=args.topic, targetPlatform=args.target_platform)
-    report = CueAnalysisService().analyze(cue_input)
+    extra_plugins = [ExternalSignalsPlugin(args.external_signals)] if getattr(args, "external_signals", None) else []
+    service = CueAnalysisService(extra_plugins=extra_plugins) if extra_plugins else CueAnalysisService()
+    report = service.analyze(cue_input)
     writer_output = CueIntelligenceWriter().write(CueWriterRequest(intelligenceReport=report, targetPlatform=args.target_platform))
 
     export_dir = Path(args.export_dir)

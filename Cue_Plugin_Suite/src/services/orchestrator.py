@@ -20,6 +20,7 @@ class CueAnalysisService:
         plugins: Iterable[CuePlugin] | None = None,
         engine: CueIntelligenceEngine | None = None,
         enrichment_plugins: Iterable[CuePlugin] | None = None,
+        extra_plugins: Iterable[CuePlugin] | None = None,
         debug: bool = False,
     ):
         self.plugins = list(plugins) if plugins is not None else [
@@ -29,12 +30,16 @@ class CueAnalysisService:
             GoogleTrendsSignalPlugin(),
         ]
         self.enrichment_plugins = list(enrichment_plugins) if enrichment_plugins is not None else [YouTubeDataPlugin()]
+        self.extra_plugins = list(extra_plugins) if extra_plugins is not None else []
         self.engine = engine or CueIntelligenceEngine()
         self.debug = debug
 
     async def analyze_async(self, input: CueInput) -> CueIntelligenceReport:
         results: List[CuePluginResult] = []
         for plugin in self.plugins:
+            if getattr(plugin, "enabled", True):
+                results.append(await self._safe_analyze(plugin, input))
+        for plugin in self.extra_plugins:
             if getattr(plugin, "enabled", True):
                 results.append(await self._safe_analyze(plugin, input))
 

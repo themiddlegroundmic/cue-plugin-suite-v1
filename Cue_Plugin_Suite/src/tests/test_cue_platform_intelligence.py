@@ -307,6 +307,77 @@ def test_cli_analyze_json_no_store_works(tmp_path, monkeypatch, capsys):
     assert Path(data["export_path"]).exists()
 
 
+def test_external_signals_plugin_reads_buzzsprout_snapshot(tmp_path):
+    import asyncio
+
+    from src.core.types.models import CueInput
+    from src.plugins.external_signals import ExternalSignalsPlugin
+
+    snapshot_path = tmp_path / "buzzsprout.json"
+    snapshot_path.write_text(json.dumps({
+        "source": "buzzsprout",
+        "podcastId": "2465711",
+        "rssUrl": "https://feeds.buzzsprout.com/2465711.rss",
+        "episodeCount": 1,
+        "totalPlays": 1200,
+        "recentEpisodeTitles": ["Creator AI Agents"],
+        "topEpisodes": [{"title": "Creator AI Agents", "totalPlays": 1200}],
+        "episodes": [{
+            "title": "Creator AI Agents",
+            "totalPlays": 1200,
+            "tags": ["ai", "creators"],
+            "description": "Public description"
+        }],
+    }), encoding="utf-8")
+
+    result = asyncio.run(ExternalSignalsPlugin(str(snapshot_path)).analyze(CueInput(manualTopic="ai agents")))
+
+    assert result.pluginId == "buzzsprout"
+    assert result.status == "ok"
+    assert result.raw["totalPlays"] == 1200
+    assert not json.dumps(result.raw).lower().count("token")
+
+
+def test_cli_accepts_external_signals_path(tmp_path, monkeypatch, capsys):
+    from src import cli
+
+    captured_plugins = []
+
+    class FakeService:
+        def __init__(self, extra_plugins=None):
+            captured_plugins.extend(extra_plugins or [])
+
+        def analyze(self, cue_input):
+            report = _report_with_score(topic=cue_input.manualTopic)
+            report.input = cue_input
+            return report
+
+    snapshot_path = tmp_path / "buzzsprout.json"
+    snapshot_path.write_text(json.dumps({"source": "buzzsprout", "episodes": []}), encoding="utf-8")
+    db_path = tmp_path / "cue.sqlite3"
+    monkeypatch.setattr(cli, "CueAnalysisService", FakeService)
+
+    exit_code = cli.main([
+        "analyze",
+        "--json",
+        "--no-store",
+        "--topic",
+        "ai agents",
+        "--external-signals",
+        str(snapshot_path),
+        "--export-dir",
+        str(tmp_path / "exports"),
+        "--db",
+        str(db_path),
+    ])
+
+    data = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert data["ok"] is True
+    assert captured_plugins
+    assert captured_plugins[0].snapshot_path == str(snapshot_path)
+
+
 def test_cli_analyze_json_with_topic_works(tmp_path, monkeypatch, capsys):
     from src import cli
 
